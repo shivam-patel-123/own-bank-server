@@ -1,9 +1,13 @@
 const express = require("express");
+const accountController = require("../contollers/accountController");
 
-const accountRouter = express.Router();
+const router = express.Router();
 
-accountRouter.route("/").get((req, res) => {
-    res.send("Hello Folks !!!");
-});
+router
+    .route("/")
+    .get(accountController.getAllAccounts)
+    .post(accountController.createNewAccount);
 
-module.exports = accountRouter;
+router.route("/:accountNumber").get(accountController.getByAccountNumber);
+
+module.exports = router;
