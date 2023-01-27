@@ -3,12 +3,12 @@ const validator = require("validator");
 const role = require("../constants/accountRoles");
 
 const accountSchema = new mongoose.Schema({
-    account_number: {
+    accountNumber: {
         type: String,
         unique: true,
         required: [true, "Account can't be created without a number."],
     },
-    account_name: {
+    accountName: {
         type: String,
         required: [true, "Account must have a name."],
     },
@@ -24,27 +24,27 @@ const accountSchema = new mongoose.Schema({
         required: [true, "Account must be secure with a password."],
         select: false,
     },
-    account_role: {
+    accountRole: {
         type: String,
         enum: [role.ADMIN, role.SUB_ADMIN, role.USER],
         default: "user",
     },
-    total_amount: {
+    totalAmount: {
         type: Number,
         default: 0,
     },
-    total_penalty: {
+    totalPenalty: {
         type: Number,
         default: 0,
     },
-    created_on: {
+    createdOn: {
         type: Date,
         required: [true, "Please provide a date of account creation."],
     },
-    approved_by: {
+    approvedBy: {
         type: mongoose.Schema.Types.ObjectId,
     },
-    linked_accounts: {
+    linkedAccounts: {
         type: [mongoose.Schema.Types.ObjectId],
     },
 });
