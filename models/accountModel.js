@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 const validator = require("validator");
+const bcrypt = require("bcrypt");
+
 const role = require("../constants/accountRoles");
 
 const accountSchema = new mongoose.Schema({
@@ -48,5 +50,20 @@ const accountSchema = new mongoose.Schema({
         type: [mongoose.Schema.Types.ObjectId],
     },
 });
+
+accountSchema.pre("save", async function (next) {
+    if (!this.isModified("password")) return next();
+
+    this.password = await bcrypt.hash(this.password, 12);
+    console.log(this.password);
+    next();
+});
+
+accountSchema.methods.checkPassword = async function (
+    plainPassword,
+    hashedPassword
+) {
+    return await bcrypt.compare(plainPassword, hashedPassword);
+};
 
 module.exports = mongoose.model("Account", accountSchema);

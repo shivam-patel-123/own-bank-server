@@ -73,9 +73,11 @@ exports.loginWithEmail = async (req, res) => {
     }
 
     const account = await Account.findOne({ email }).select("+password");
-    console.log(account);
 
-    if (!account || account.password !== password) {
+    if (
+        !account ||
+        !(await account.checkPassword(password, account.password))
+    ) {
         return new Error("Email or Password is incorrect");
     }
 
