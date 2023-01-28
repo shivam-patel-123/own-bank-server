@@ -1,6 +1,6 @@
 const express = require("express");
 const cookieParser = require("cookie-parser");
-const globalErrorHandlerMiddleware = require("./contollers/errorController");
+const globalErrorHandlerMiddleware = require("./controllers/errorController");
 
 const accountRouter = require("./routes/accountRoutes");
 
