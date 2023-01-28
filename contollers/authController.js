@@ -1,8 +1,15 @@
 const jwt = require("jsonwebtoken");
 const validator = require("validator");
 
+const AppError = require("../utils/appError");
 const role = require("../constants/accountRoles");
 const Account = require("../models/accountModel");
+
+const catchAsync = (fn) => {
+    return (req, res, next) => {
+        fn(req, res, next).catch(next);
+    };
+};
 
 const createAndSendToken = (data, res) => {
     const expiryInMilliseconds = new Date(
@@ -20,7 +27,7 @@ const createAndSendToken = (data, res) => {
     return token;
 };
 
-exports.createNewAccount = async (req, res) => {
+exports.createNewAccount = catchAsync(async (req, res, next) => {
     const {
         accountNumber,
         accountName,
@@ -59,28 +66,55 @@ exports.createNewAccount = async (req, res) => {
             account,
         },
     });
+});
+
+const loginWithEmail = async (email) => {
+    let isValidEmail = validator.isEmail(email);
+    if (!isValidEmail) {
+        return new AppError("Email entered is invalid", 400);
+    }
+
+    return await Account.findOne({ email }).select("+password");
 };
 
-exports.loginWithEmail = async (req, res) => {
-    const { email, password } = req.body;
+exports.loginWithEmailOrAccountNumber = catchAsync(async (req, res, next) => {
+    const { accountNumber, email, password } = req.body;
 
-    if ((!email, !password)) {
-        return new Error("Email and Password can't be empty.");
+    if (!accountNumber && !email) {
+        return next(new AppError("Email or Account number is required", 400));
     }
 
-    if (!validator.isEmail(email)) {
-        return new Error("Invalid email entered");
+    if (!password) {
+        return next(new AppError("Password is required.", 400));
     }
 
-    const account = await Account.findOne({ email }).select("+password");
+    let account = await Account.findOne({ accountNumber }).select("+password");
+    if (!account) {
+        account = await loginWithEmail(email);
+    }
 
     if (
         !account ||
-        !(await account.checkPassword(password, account.password))
+        !(await account?.checkPassword(password, account.password))
     ) {
-        return new Error("Email or Password is incorrect");
+        return next(
+            new AppError(
+                "Credientials provided is incorrect. Please check twice.",
+                400
+            )
+        );
     }
 
+    const a = await Account.findOne({ accountNumber });
+
+    if (email !== a?.email) {
+        return next(
+            new AppError(
+                `Email doesn't match with the account Number: "${accountNumber}"`,
+                400
+            )
+        );
+    }
     account.password = undefined;
 
     const token = createAndSendToken(
@@ -95,4 +129,4 @@ exports.loginWithEmail = async (req, res) => {
             account,
         },
     });
-};
+});

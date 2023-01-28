@@ -9,7 +9,7 @@ router
     .get(accountController.getAllAccounts)
     .post(authController.createNewAccount);
 
-router.route("/login").post(authController.loginWithEmail);
+router.route("/login").post(authController.loginWithEmailOrAccountNumber);
 router.route("/:accountNumber").get(accountController.getByAccountNumber);
 
 module.exports = router;
