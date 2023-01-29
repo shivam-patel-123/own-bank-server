@@ -44,15 +44,19 @@ const accountSchema = new mongoose.Schema({
         required: [true, "Please provide a date of account creation"],
     },
     approvedBy: {
-        type: mongoose.Schema.Types.ObjectId,
+        type: String,
     },
     linkedAccounts: {
-        type: [mongoose.Schema.Types.ObjectId],
+        type: [String],
     },
 });
 
 accountSchema.pre("save", async function (next) {
     if (!this.isModified("password")) return next();
+
+    this.linkedAccounts = this.linkedAccounts.filter(
+        (account) => account !== this.accountNumber
+    );
 
     this.password = await bcrypt.hash(this.password, 12);
     next();

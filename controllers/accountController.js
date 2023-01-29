@@ -12,17 +12,18 @@ exports.getAllAccounts = async (req, res) => {
     });
 };
 
-exports.getByAccountNumber = async (req, res) => {
+exports.getByAccountNumber = async (req, res, next) => {
     const accountNumber = req.params.accountNumber;
 
     const account = await Account.findOne({
-        account_number: { $eq: accountNumber },
+        accountNumber: { $eq: accountNumber },
     });
 
     if (!account) {
         return next(
             new AppError(
-                `Can't find account with account Number: ${accountNumber}`
+                `Can't find account with account number: "${accountNumber}"`,
+                400
             )
         );
     }
