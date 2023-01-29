@@ -29,7 +29,7 @@ const accountSchema = new mongoose.Schema({
     accountRole: {
         type: String,
         enum: [role.ADMIN, role.SUB_ADMIN, role.USER],
-        default: "user",
+        default: role.USER,
     },
     totalAmount: {
         type: Number,

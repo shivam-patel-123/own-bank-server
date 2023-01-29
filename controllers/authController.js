@@ -1,16 +1,11 @@
 const jwt = require("jsonwebtoken");
+const { promisify } = require("util");
 const validator = require("validator");
-const bcrypt = require("bcrypt");
 
+const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 const role = require("../constants/accountRoles");
 const Account = require("../models/accountModel");
-
-const catchAsync = (fn) => {
-    return (req, res, next) => {
-        fn(req, res, next).catch(next);
-    };
-};
 
 const createAndSendToken = (data, res) => {
     const expiryInMilliseconds = new Date(
@@ -47,7 +42,7 @@ const fetchAccountFromCredentials = async (credentials) => {
 
     let account = await Account.findOne({ accountNumber }).select("+password");
     if (!account) {
-        let isValidEmail = validator.isEmail(email);
+        let isValidEmail = email && validator.isEmail(email);
         if (!isValidEmail) {
             return {
                 isExists: false,
@@ -85,25 +80,40 @@ const fetchAccountFromCredentials = async (credentials) => {
     };
 };
 
+const validateAccountRole = (roleToValidate) => {
+    return !role[roleToValidate] ? role.USER : roleToValidate;
+};
+
 exports.createNewAccount = catchAsync(async (req, res, next) => {
-    const {
-        accountNumber,
-        accountName,
-        email,
-        password,
-        accountRole,
-        totalAmount,
-        totalPenalty,
-        approvedBy,
-    } = req.body;
+    const loggedInAccountRole = req.account?.accountRole;
+    const { accountNumber, accountName, email, password, totalAmount } =
+        req.body;
+    let { accountRole, linkedAccounts = [] } = req.body;
+    let approvedBy;
 
-    let linkedAccounts = req.body.linkedAccounts;
+    // Make sure that the "accountRole" is either Admin, Sub-admin or User.
+    accountRole = validateAccountRole(accountRole);
 
-    if (accountRole == role.ADMIN || role.SUB_ADMIN) {
-        // TODO: Prevent 'user' from Adding account as 'admin' or 'sub-admin' account.
+    // Prevent "user" from creating or requesting admin or sub-admin account.
+    if (accountRole === role.ADMIN || accountRole === role.SUB_ADMIN) {
+        return next(
+            new AppError(
+                "You can't create/request for admin or sub-admin role.",
+                401
+            )
+        );
     }
 
-    // CHeck if linked account belongs to the user
+    // Set "approvedBy" field.
+    if (
+        loggedInAccountRole &&
+        (loggedInAccountRole === role.ADMIN ||
+            loggedInAccountRole === role.SUB_ADMIN)
+    ) {
+        approvedBy = req.account?.accountNumber;
+    }
+
+    // Check if linked account belongs to a real user
     const accounts = await Promise.all(
         linkedAccounts.map(async (userDataObj) => {
             const { account, isExists } = await fetchAccountFromCredentials({
@@ -118,7 +128,8 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
         })
     );
 
-    linkedAccounts = accounts.filter((account) => account);
+    // Set makes sure that "linkedAccounts" field doen't have a duplicate value.
+    linkedAccounts = [...new Set(accounts.filter((account) => account))];
 
     const account = await Account.create({
         accountNumber,
@@ -127,17 +138,13 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
         password,
         accountRole,
         totalAmount,
-        totalPenalty,
         createdOn: new Date(),
         approvedBy,
         linkedAccounts,
     });
 
-    const token = createAndSendToken({ accountNumber, email }, res);
-
     res.status(201).json({
         status: "success",
-        token,
         data: {
             account,
         },
@@ -157,12 +164,15 @@ exports.loginWithEmailOrAccountNumber = catchAsync(async (req, res, next) => {
         return next(error);
     }
 
+    // Prevents from sending password field in response
     account.password = undefined;
 
     const token = createAndSendToken(
         { accountNumber: account.accountNumber, email: account.email },
         res
     );
+
+    req.user = account;
 
     res.status(200).json({
         status: "success",
@@ -171,4 +181,38 @@ exports.loginWithEmailOrAccountNumber = catchAsync(async (req, res, next) => {
             account,
         },
     });
+});
+
+exports.protect = catchAsync(async (req, res, next) => {
+    let token;
+    if (
+        req.headers.authorization &&
+        req.headers.authorization.startsWith("Bearer")
+    ) {
+        token = req.headers.authorization.split(" ")[1];
+        console.log("IF", token);
+    } else if (req.cookies.token) {
+        token = req.cookies.token;
+        console.log("ELSE IF", token);
+    }
+
+    if (!token) {
+        console.log("TOKEN = ", token);
+        return next(new AppError("You are not logged in.", 401));
+    }
+
+    const tokenData = await promisify(jwt.verify)(
+        token,
+        process.env.JWT_TOKEN_SECRET
+    );
+
+    const account = await Account.findOne({
+        accountNumber: tokenData.accountNumber,
+    });
+    if (!account) {
+        return next(new AppError("The account no longer exist.", 401));
+    }
+
+    req.account = account;
+    next();
 });
