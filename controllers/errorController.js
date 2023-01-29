@@ -12,8 +12,16 @@ const handleDuplicateFieldsDb = (err) => {
     return new AppError(message, 400);
 };
 
+const handleTokenExpiredError = (err) => {
+    return new AppError("Your token has expired. Login again", 401);
+};
+
+const handleInvalidTokenError = (err) => {
+    return new AppError("Token is invalid.", 401);
+};
+
 const sendErrorResponse = (err, req, res) => {
-    if (err.isOperational) {
+    if (err?.isOperational) {
         return res.status(err.statusCode).json({
             status: err.status,
             message: err.message,
@@ -36,6 +44,8 @@ module.exports = (err, req, res, next) => {
 
     if (err.code == 11000) error = handleDuplicateFieldsDb(err);
     if (err.name == "ValidationError") error = handleValidationError(err);
+    if (err.name == "TokenExpiredError") error = handleTokenExpiredError(err);
+    if (err.name == "JsonWebTokenError") error = handleInvalidTokenError(err);
 
     sendErrorResponse(error, req, res);
 };
