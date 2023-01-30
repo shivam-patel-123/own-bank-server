@@ -6,6 +6,7 @@ const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 const role = require("../constants/accountRoles");
 const Account = require("../models/accountModel");
+const { addLinkedAccounts } = require("./accountController");
 
 const createAndSendToken = (data, res) => {
     const expiryInMilliseconds = new Date(
@@ -142,6 +143,8 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
         approvedBy,
         linkedAccounts,
     });
+
+    addLinkedAccounts(account.accountNumber, linkedAccounts);
 
     res.status(201).json({
         status: "success",

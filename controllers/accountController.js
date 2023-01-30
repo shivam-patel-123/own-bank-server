@@ -1,8 +1,27 @@
 const Account = require("../models/accountModel");
 const AppError = require("../utils/appError");
 
+const populateLinkedAccounts = async (account) => {
+    if (!account.linkedAccounts) return account;
+
+    const linkedAccountsData = await Promise.all(
+        account.linkedAccounts.map(async (accountNumber) => {
+            return await Account.findOne({ accountNumber }).select(
+                "-linkedAccounts"
+            );
+        })
+    );
+
+    account = { ...account.toObject(), linkedAccounts: linkedAccountsData };
+    return account;
+};
+
 exports.getAllAccounts = async (req, res) => {
-    const accounts = await Account.find();
+    let accounts = await Account.find();
+
+    accounts = await Promise.all(
+        accounts.map(async (account) => await populateLinkedAccounts(account))
+    );
 
     res.status(200).json({
         status: "success",
@@ -15,7 +34,7 @@ exports.getAllAccounts = async (req, res) => {
 exports.getByAccountNumber = async (req, res, next) => {
     const accountNumber = req.params.accountNumber;
 
-    const account = await Account.findOne({
+    let account = await Account.findOne({
         accountNumber: { $eq: accountNumber },
     });
 
@@ -28,10 +47,40 @@ exports.getByAccountNumber = async (req, res, next) => {
         );
     }
 
+    account = await populateLinkedAccounts(account);
+
     res.status(200).json({
         status: "success",
         data: {
             account,
         },
     });
+};
+
+exports.addLinkedAccounts = async (
+    currentAccount,
+    linkedAccountNumbersList
+) => {
+    await Promise.all(
+        linkedAccountNumbersList.map(async (accountNumber) => {
+            const updatedAccountNumberList = [
+                currentAccount,
+                ...linkedAccountNumbersList,
+            ];
+            updatedAccountNumberList.splice(
+                updatedAccountNumberList.indexOf(accountNumber),
+                1
+            );
+            await Account.updateOne(
+                {
+                    accountNumber,
+                },
+                {
+                    $addToSet: {
+                        linkedAccounts: updatedAccountNumberList,
+                    },
+                }
+            );
+        })
+    );
 };
