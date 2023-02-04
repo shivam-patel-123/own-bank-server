@@ -1,9 +1,0 @@
-POST /account
-POST /account/request
-POST /account/login
-    POST /account/approve
-    PUT /account/:accountNumber
-    DELETE /acoount/:accountNumber
-
-GET /account
-GET /account/:accountNumber
