@@ -82,7 +82,12 @@ const fetchAccountFromCredentials = async (credentials) => {
 };
 
 const validateAccountRole = (roleToValidate) => {
-    return !role[roleToValidate] ? role.USER : roleToValidate;
+    for (const currRole in role) {
+        if (role[currRole] === roleToValidate) {
+            return role[currRole];
+        }
+    }
+    return role.USER;
 };
 
 exports.createNewAccount = catchAsync(async (req, res, next) => {
@@ -99,7 +104,7 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
     if (accountRole === role.ADMIN || accountRole === role.SUB_ADMIN) {
         return next(
             new AppError(
-                "You can't create/request for admin or sub-admin role.",
+                "You can't create or request for admin or sub-admin role.",
                 401
             )
         );
@@ -129,7 +134,7 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
         })
     );
 
-    // Set makes sure that "linkedAccounts" field doen't have a duplicate value.
+    // Set makes sure that "linkedAccounts" field doesn't have a duplicate value.
     linkedAccounts = [...new Set(accounts.filter((account) => account))];
 
     const account = await Account.create({
@@ -144,7 +149,7 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
         linkedAccounts,
     });
 
-    addLinkedAccounts(account.accountNumber, linkedAccounts);
+    addLinkedAccounts(account, req.account);
 
     res.status(201).json({
         status: "success",
@@ -165,6 +170,15 @@ exports.loginWithEmailOrAccountNumber = catchAsync(async (req, res, next) => {
 
     if (error) {
         return next(error);
+    }
+
+    if (account?.accountRole !== role.ADMIN && !account?.approvedBy) {
+        return next(
+            new AppError(
+                "Your account isn't approved. Wait for admin or sub-amdin to process your account request.",
+                401
+            )
+        );
     }
 
     // Prevents from sending password field in response

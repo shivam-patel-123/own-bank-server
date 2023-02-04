@@ -1,5 +1,8 @@
 const Account = require("../models/accountModel");
 const AppError = require("../utils/appError");
+const catchAsync = require("../utils/catchAsync");
+
+const role = require("../constants/accountRoles");
 
 const populateLinkedAccounts = async (account) => {
     if (!account.linkedAccounts) return account;
@@ -57,30 +60,85 @@ exports.getByAccountNumber = async (req, res, next) => {
     });
 };
 
-exports.addLinkedAccounts = async (
-    currentAccount,
-    linkedAccountNumbersList
-) => {
-    await Promise.all(
+exports.addLinkedAccounts = async (currentAccount, loggedInAccount) => {
+    const { currentAccountNumber, linkedAccounts: linkedAccountNumbersList } =
+        currentAccount;
+    return await Promise.all(
         linkedAccountNumbersList.map(async (accountNumber) => {
             const updatedAccountNumberList = [
-                currentAccount,
+                currentAccountNumber,
                 ...linkedAccountNumbersList,
             ];
             updatedAccountNumberList.splice(
                 updatedAccountNumberList.indexOf(accountNumber),
                 1
             );
-            await Account.updateOne(
+            return await Account.findOneAndUpdate(
                 {
                     accountNumber,
                 },
                 {
                     $addToSet: {
-                        linkedAccounts: updatedAccountNumberList,
+                        linkedAccounts: loggedInAccount.accountNumber,
                     },
                 }
             );
         })
     );
 };
+
+exports.approveAccount = catchAsync(async (req, res, next) => {
+    const {
+        accountNumber: loggedInAccountNumber,
+        accountRole: loggedInAccountRole,
+    } = req.account || {};
+    const { accountNumber } = req.body;
+
+    if (!loggedInAccountRole) {
+        return next(
+            new AppError(
+                "You are not logged in. Please login and try again.",
+                401
+            )
+        );
+    }
+
+    if (
+        loggedInAccountRole !== role.ADMIN &&
+        loggedInAccountRole !== role.SUB_ADMIN
+    ) {
+        return next(
+            new AppError(
+                "You don't have permission to approve account(s).",
+                403
+            )
+        );
+    }
+
+    if (loggedInAccountNumber === accountNumber) {
+        return next(new AppError("You can't approve your own account", 403));
+    }
+
+    let updatedAccount = await Account.findOneAndUpdate(
+        { accountNumber },
+        {
+            $set: { approvedBy: loggedInAccountNumber },
+        },
+        { new: true }
+    );
+
+    const linkedAccountDetails = await this.addLinkedAccounts(
+        updatedAccount,
+        req.account
+    );
+
+    res.status(200).json({
+        status: "success",
+        data: {
+            account: {
+                ...updatedAccount.toObject(),
+                linkedAccounts: linkedAccountDetails,
+            },
+        },
+    });
+});
