@@ -6,7 +6,6 @@ const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 const role = require("../constants/accountRoles");
 const Account = require("../models/accountModel");
-const { addLinkedAccounts } = require("./accountController");
 
 const createAndSendToken = (data, res) => {
     const expiryInMilliseconds = new Date(
@@ -24,7 +23,7 @@ const createAndSendToken = (data, res) => {
     return token;
 };
 
-const fetchAccountFromCredentials = async (credentials) => {
+exports.fetchAccountFromCredentials = async (credentials) => {
     const { accountNumber, email, password } = credentials;
 
     if (!accountNumber && !email) {
@@ -94,7 +93,7 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
     const loggedInAccountRole = req.account?.accountRole;
     const { accountNumber, accountName, email, password, totalAmount } =
         req.body;
-    let { accountRole, linkedAccounts = [] } = req.body;
+    let { accountRole } = req.body;
     let approvedBy;
 
     // Make sure that the "accountRole" is either Admin, Sub-admin or User.
@@ -120,24 +119,24 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
     }
 
     // Check if linked account belongs to a real user
-    const accounts = await Promise.all(
-        linkedAccounts.map(async (userDataObj) => {
-            const { account, isExists } = await fetchAccountFromCredentials({
-                accountNumber: userDataObj.accountNumber,
-                email: userDataObj.email,
-                password: userDataObj.password,
-            });
+    // const accounts = await Promise.all(
+    //     linkedAccounts.map(async (userDataObj) => {
+    //         const { account, isExists } = await fetchAccountFromCredentials({
+    //             accountNumber: userDataObj.accountNumber,
+    //             email: userDataObj.email,
+    //             password: userDataObj.password,
+    //         });
 
-            if (isExists) {
-                return account.accountNumber;
-            }
-        })
-    );
+    //         if (isExists) {
+    //             return account.accountNumber;
+    //         }
+    //     })
+    // );
 
     // Set makes sure that "linkedAccounts" field doesn't have a duplicate value.
-    linkedAccounts = [...new Set(accounts.filter((account) => account))];
+    // linkedAccounts = [...new Set(accounts.filter((account) => account))];
 
-    const account = await Account.create({
+    let account = await Account.create({
         accountNumber,
         accountName,
         email,
@@ -146,10 +145,7 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
         totalAmount,
         createdOn: new Date(),
         approvedBy,
-        linkedAccounts,
     });
-
-    addLinkedAccounts(account, req.account);
 
     res.status(201).json({
         status: "success",
@@ -162,7 +158,7 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
 exports.loginWithEmailOrAccountNumber = catchAsync(async (req, res, next) => {
     const { accountNumber, email, password } = req.body;
 
-    const { account, error } = await fetchAccountFromCredentials({
+    const { account, error } = await this.fetchAccountFromCredentials({
         accountNumber,
         email,
         password,

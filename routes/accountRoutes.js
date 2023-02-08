@@ -18,4 +18,8 @@ router
 
 router.route("/:accountNumber").get(accountController.getByAccountNumber);
 
+router.route("/").patch(accountController.updateAccount);
+
+router.route("/link-accounts").post(accountController.insertLinkedAccounts);
+
 module.exports = router;

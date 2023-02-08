@@ -1,6 +1,9 @@
 const Account = require("../models/accountModel");
 const AppError = require("../utils/appError");
 const catchAsync = require("../utils/catchAsync");
+const {
+    fetchAccountFromCredentials,
+} = require("../controllers/authController");
 
 const role = require("../constants/accountRoles");
 
@@ -60,29 +63,40 @@ exports.getByAccountNumber = async (req, res, next) => {
     });
 };
 
-exports.addLinkedAccounts = async (currentAccount, loggedInAccount) => {
-    const { currentAccountNumber, linkedAccounts: linkedAccountNumbersList } =
-        currentAccount;
+exports.addLinkedAccounts = async (...accounts) => {
+    let totalLinkedAccountsList = accounts.reduce((accumulator, account) => {
+        accumulator.push(account.accountNumber, ...account.linkedAccounts);
+        return accumulator;
+    }, []);
+
+    totalLinkedAccountsList = [...new Set(totalLinkedAccountsList)];
+
     return await Promise.all(
-        linkedAccountNumbersList.map(async (accountNumber) => {
-            const updatedAccountNumberList = [
-                currentAccountNumber,
-                ...linkedAccountNumbersList,
-            ];
-            updatedAccountNumberList.splice(
-                updatedAccountNumberList.indexOf(accountNumber),
-                1
-            );
-            return await Account.findOneAndUpdate(
+        totalLinkedAccountsList.map(async (accNumber) => {
+            const copy = [...totalLinkedAccountsList];
+
+            const indexOfCurrentAccount =
+                totalLinkedAccountsList.indexOf(accNumber);
+
+            copy.splice(indexOfCurrentAccount, 1);
+
+            const updatedAccount = await Account.findOneAndUpdate(
                 {
-                    accountNumber,
+                    accountNumber: accNumber,
                 },
                 {
-                    $addToSet: {
-                        linkedAccounts: loggedInAccount.accountNumber,
+                    $set: {
+                        linkedAccounts: copy,
                     },
+                },
+                {
+                    new: true,
                 }
-            );
+            ).select("-linkedAccounts");
+
+            copy.splice(indexOfCurrentAccount, 0, accNumber);
+
+            return updatedAccount;
         })
     );
 };
@@ -127,18 +141,86 @@ exports.approveAccount = catchAsync(async (req, res, next) => {
         { new: true }
     );
 
-    const linkedAccountDetails = await this.addLinkedAccounts(
-        updatedAccount,
+    res.status(200).json({
+        status: "success",
+        data: {
+            account: {
+                updatedAccount,
+                // linkedAccounts: linkedAccountDetails,
+            },
+        },
+    });
+});
+
+exports.updateAccount = catchAsync(async (req, res, next) => {
+    const loggedInAccountNumber = req.account?.accountNumber;
+
+    const editableFields = ["accountName", "totalAmount", "totalPenalty"];
+
+    for (const property in req.body) {
+        if (!editableFields.includes(property)) {
+            req.body[property] = undefined;
+        }
+    }
+
+    const account = await Account.findOneAndUpdate(
+        { accountNumber: loggedInAccountNumber },
+        req.body,
+        {
+            new: true,
+        }
+    );
+
+    res.status(200).json({
+        status: "success",
+        data: {
+            account,
+        },
+    });
+});
+
+exports.insertLinkedAccounts = catchAsync(async (req, res, next) => {
+    const clientData = req.body.accountsToLink;
+
+    if (clientData.length === 0) {
+        return next(
+            new AppError("Account Authentication data was not provided.", 400)
+        );
+    }
+
+    let accounts = await Promise.all(
+        req.body.accountsToLink?.map(
+            async ({ accountNumber, email, password }) =>
+                await fetchAccountFromCredentials({
+                    accountNumber,
+                    email,
+                    password,
+                })
+        )
+    );
+
+    accounts = accounts
+        .filter(({ isExists }) => isExists)
+        .map(({ account }) => account);
+
+    if (accounts.length === 0) {
+        return next(
+            new AppError(
+                "Credentials provided is incorrect. Please try again!",
+                400
+            )
+        );
+    }
+
+    const allLinkedAccounts = await this.addLinkedAccounts(
+        ...accounts,
         req.account
     );
 
     res.status(200).json({
         status: "success",
         data: {
-            account: {
-                ...updatedAccount.toObject(),
-                linkedAccounts: linkedAccountDetails,
-            },
+            accounts: allLinkedAccounts,
         },
     });
 });
