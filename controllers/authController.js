@@ -7,18 +7,37 @@ const AppError = require("../utils/appError");
 const role = require("../constants/accountRoles");
 const Account = require("../models/accountModel");
 
+const validateAccountRole = (roleToValidate) => {
+    for (const currRole in role) {
+        if (role[currRole] === roleToValidate) {
+            return role[currRole];
+        }
+    }
+    return role.USER;
+};
+
+const sendCookie = (key, value, options, res) => {
+    if (!options.expire) {
+        options.expire = new Date(
+            Date.now() + process.env.JWT_TOKEN_EXPIRY * 24 * 60 * 60 * 1000
+        );
+    }
+    res.cookie(key, value, options);
+};
+
 const createAndSendToken = (data, res) => {
-    const expiryInMilliseconds = new Date(
-        Date.now() + process.env.JWT_TOKEN_EXPIRY * 24 * 60 * 60 * 1000
-    );
     const token = jwt.sign(data, process.env.JWT_TOKEN_SECRET, {
         expiresIn: process.env.JWT_TOKEN_EXPIRY,
     });
 
-    res.cookie("token", token, {
-        expire: expiryInMilliseconds,
-        httpOnly: true,
-    });
+    sendCookie(
+        "token",
+        token,
+        {
+            httpOnly: true,
+        },
+        res
+    );
 
     return token;
 };
@@ -80,15 +99,6 @@ exports.fetchAccountFromCredentials = async (credentials) => {
     };
 };
 
-const validateAccountRole = (roleToValidate) => {
-    for (const currRole in role) {
-        if (role[currRole] === roleToValidate) {
-            return role[currRole];
-        }
-    }
-    return role.USER;
-};
-
 exports.createNewAccount = catchAsync(async (req, res, next) => {
     const loggedInAccountRole = req.account?.accountRole;
     const { accountNumber, accountName, email, password, totalAmount } =
@@ -147,6 +157,8 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
         approvedBy,
     });
 
+    account.password = undefined;
+
     res.status(201).json({
         status: "success",
         data: {
@@ -158,34 +170,56 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
 exports.loginWithEmailOrAccountNumber = catchAsync(async (req, res, next) => {
     const { accountNumber, email, password } = req.body;
 
-    const { account, error } = await this.fetchAccountFromCredentials({
-        accountNumber,
-        email,
-        password,
-    });
+    let token, account;
 
-    if (error) {
-        return next(error);
-    }
+    if ((accountNumber || email) && password) {
+        const { account: userAccount, error } =
+            await this.fetchAccountFromCredentials({
+                accountNumber,
+                email,
+                password,
+            });
 
-    if (account?.accountRole !== role.ADMIN && !account?.approvedBy) {
-        return next(
-            new AppError(
-                "Your account isn't approved. Wait for admin or sub-amdin to process your account request.",
-                401
-            )
+        if (error) {
+            return next(error);
+        }
+
+        if (
+            userAccount?.accountRole !== role.ADMIN &&
+            !userAccount?.approvedBy
+        ) {
+            return next(
+                new AppError(
+                    "Your account isn't approved. Wait for admin or sub-amdin to process your account request.",
+                    401
+                )
+            );
+        }
+
+        account = userAccount;
+
+        // Prevents from sending password field in response
+        account.password = undefined;
+
+        token = createAndSendToken(
+            { accountNumber: account.accountNumber, email: account.email },
+            res
         );
+    } else if (req.cookies.token) {
+        const tokenData = await promisify(jwt.verify)(
+            req.cookies.token,
+            process.env.JWT_TOKEN_SECRET
+        );
+
+        account = await Account.findOne({
+            accountNumber: tokenData.accountNumber,
+        });
+
+        token = req.cookies.token;
+        sendCookie("token", token, { httpOnly: true }, res);
+    } else {
+        return next(new AppError("Credentials was not provided", 400));
     }
-
-    // Prevents from sending password field in response
-    account.password = undefined;
-
-    const token = createAndSendToken(
-        { accountNumber: account.accountNumber, email: account.email },
-        res
-    );
-
-    req.user = account;
 
     res.status(200).json({
         status: "success",
