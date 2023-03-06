@@ -4,7 +4,7 @@
     "description": "This is the application to keep track of the money collected and give the analytics of the same.",
     "main": "server.js",
     "scripts": {
-        "start": "nodemon server.js"
+        "start": "cd src && nodemon server.js"
     },
     "author": "Shivam Patel",
     "license": "ISC",
