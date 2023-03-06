@@ -6,6 +6,7 @@ const {
 } = require("../controllers/authController");
 
 const role = require("../constants/accountRoles");
+const accountRoles = require("../constants/accountRoles");
 
 const populateLinkedAccounts = async (account) => {
     if (!account.linkedAccounts) return account;
@@ -62,6 +63,21 @@ exports.getByAccountNumber = async (req, res, next) => {
         },
     });
 };
+
+exports.getAccountsToApprove = catchAsync(async (_, res, next) => {
+    const accounts = await Account.find({
+        approvedBy: undefined,
+        accountRole: { $ne: accountRoles.ADMIN },
+    });
+
+    res.status(200).json({
+        status: "success",
+        totalResults: accounts.length,
+        data: {
+            accounts,
+        },
+    });
+});
 
 exports.addLinkedAccounts = async (...accounts) => {
     let totalLinkedAccountsList = accounts.reduce((accumulator, account) => {

@@ -6,6 +6,7 @@ const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 const role = require("../constants/accountRoles");
 const Account = require("../models/accountModel");
+const cookie = require("../constants/cookies");
 
 const validateAccountRole = (roleToValidate) => {
     for (const currRole in role) {
@@ -17,10 +18,12 @@ const validateAccountRole = (roleToValidate) => {
 };
 
 const sendCookie = (key, value, options, res) => {
-    if (!options.expire) {
-        options.expire = new Date(
-            Date.now() + process.env.JWT_TOKEN_EXPIRY * 24 * 60 * 60 * 1000
-        );
+    if (!options.maxAge) {
+        // options.maxAge = new Date(
+        //     Date.now() + process.env.JWT_TOKEN_EXPIRY * 24 * 60 * 60 * 1000
+        // );
+        options.maxAge =
+            process.env.JWT_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
     }
     res.cookie(key, value, options);
 };
@@ -31,7 +34,7 @@ const createAndSendToken = (data, res) => {
     });
 
     sendCookie(
-        "token",
+        cookie.KEY,
         token,
         {
             httpOnly: true,
@@ -216,7 +219,7 @@ exports.loginWithEmailOrAccountNumber = catchAsync(async (req, res, next) => {
         });
 
         token = req.cookies.token;
-        sendCookie("token", token, { httpOnly: true }, res);
+        sendCookie(cookie.KEY, token, { httpOnly: true }, res);
     } else {
         return next(new AppError("Credentials was not provided", 400));
     }
@@ -229,6 +232,14 @@ exports.loginWithEmailOrAccountNumber = catchAsync(async (req, res, next) => {
         },
     });
 });
+
+exports.logout = (req, res) => {
+    res.clearCookie(cookie.KEY);
+
+    res.status(200).json({
+        status: "success",
+    });
+};
 
 exports.protect = catchAsync(async (req, res, next) => {
     let token;
@@ -260,3 +271,14 @@ exports.protect = catchAsync(async (req, res, next) => {
     req.account = account;
     next();
 });
+
+exports.restrictTo =
+    (...roles) =>
+    (req, res, next) => {
+        const userRole = req.account?.accountRole;
+
+        if (!roles.includes(userRole))
+            return next(new AppError("You don't have permission.", 403));
+
+        next();
+    };

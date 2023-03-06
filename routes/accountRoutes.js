@@ -1,4 +1,5 @@
 const express = require("express");
+const accountRoles = require("../constants/accountRoles");
 const accountController = require("../controllers/accountController");
 const authController = require("../controllers/authController");
 
@@ -6,10 +7,17 @@ const router = express.Router();
 
 router.route("/request").post(authController.createNewAccount);
 router.route("/login").post(authController.loginWithEmailOrAccountNumber);
+router.route("/logout").get(authController.logout);
 
 router.use(authController.protect);
 
-router.route("/approve").post(accountController.approveAccount);
+router
+    .route("/approve")
+    .get(
+        authController.restrictTo(accountRoles.ADMIN, accountRoles.SUB_ADMIN),
+        accountController.getAccountsToApprove
+    )
+    .post(accountController.approveAccount);
 
 router
     .route("/")
