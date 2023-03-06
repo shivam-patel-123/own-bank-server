@@ -5,7 +5,11 @@ const cors = require("cors");
 
 const accountRouter = require("./routes/accountRoutes");
 
+const staticFilesPath = "../public";
+
 const app = express();
+
+app.use(express.static(staticFilesPath));
 
 app.use(express.json());
 app.use(cookieParser());
