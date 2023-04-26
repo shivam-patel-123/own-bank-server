@@ -3,6 +3,7 @@ const validator = require("validator");
 const bcrypt = require("bcrypt");
 
 const role = require("../constants/accountRoles");
+const config = require("../config");
 
 const accountSchema = new mongoose.Schema({
     accountNumber: {
@@ -49,6 +50,10 @@ const accountSchema = new mongoose.Schema({
     linkedAccounts: {
         type: [String],
         ref: "Account",
+    },
+    profilePicture: {
+        type: String,
+        default: `${config.SERVER_IMAGES_URL}/user-default.svg`,
     },
 });
 
