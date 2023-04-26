@@ -3,9 +3,11 @@ const cookieParser = require("cookie-parser");
 const globalErrorHandlerMiddleware = require("./controllers/errorController");
 const cors = require("cors");
 
+const config = require("./config");
 const accountRouter = require("./routes/accountRoutes");
+const avatarRouter = require("./routes/avatarRoutes");
 
-const staticFilesPath = "../public";
+const staticFilesPath = `../${config.STATIC_PATH}`;
 
 const app = express();
 
@@ -22,6 +24,7 @@ app.use(
 );
 
 app.use("/api/v1/account", accountRouter);
+app.use("/api/v1/avatar", avatarRouter);
 
 app.use(globalErrorHandlerMiddleware);
 module.exports = app;

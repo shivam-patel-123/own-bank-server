@@ -7,6 +7,8 @@ const AppError = require("../utils/appError");
 const role = require("../constants/accountRoles");
 const Account = require("../models/accountModel");
 const cookie = require("../constants/cookies");
+const avatarController = require("./avatarController");
+const accountController = require("./accountController");
 
 const validateAccountRole = (roleToValidate) => {
     for (const currRole in role) {
@@ -22,8 +24,7 @@ const sendCookie = (key, value, options, res) => {
         // options.maxAge = new Date(
         //     Date.now() + process.env.JWT_TOKEN_EXPIRY * 24 * 60 * 60 * 1000
         // );
-        options.maxAge =
-            process.env.JWT_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+        options.maxAge = process.env.JWT_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
     }
     res.cookie(key, value, options);
 };
@@ -63,6 +64,7 @@ exports.fetchAccountFromCredentials = async (credentials) => {
     }
 
     let account = await Account.findOne({ accountNumber }).select("+password");
+
     if (!account) {
         let isValidEmail = email && validator.isEmail(email);
         if (!isValidEmail) {
@@ -77,10 +79,7 @@ exports.fetchAccountFromCredentials = async (credentials) => {
     if (!(await account?.checkPassword(password, account.password))) {
         return {
             isExists: false,
-            error: new AppError(
-                "Credientials provided is incorrect. Please check twice.",
-                400
-            ),
+            error: new AppError("Credientials provided is incorrect. Please check twice.", 400),
         };
     }
 
@@ -89,12 +88,12 @@ exports.fetchAccountFromCredentials = async (credentials) => {
     if (email && accountNumber && email !== accountFromAccNo?.email) {
         return {
             isExists: false,
-            error: new AppError(
-                `Email doesn't match with the account Number: "${accountNumber}"`,
-                400
-            ),
+            error: new AppError(`Email doesn't match with the account Number: "${accountNumber}"`, 400),
         };
     }
+
+    account = await accountController.populateLinkedAccounts(account, { accountNumber: 1, profilePicture: 1 });
+    console.log(account);
 
     return {
         isExists: true,
@@ -104,8 +103,7 @@ exports.fetchAccountFromCredentials = async (credentials) => {
 
 exports.createNewAccount = catchAsync(async (req, res, next) => {
     const loggedInAccountRole = req.account?.accountRole;
-    const { accountNumber, accountName, email, password, totalAmount } =
-        req.body;
+    const { accountNumber, accountName, email, password, totalAmount } = req.body;
     let { accountRole } = req.body;
     let approvedBy;
 
@@ -114,20 +112,11 @@ exports.createNewAccount = catchAsync(async (req, res, next) => {
 
     // Prevent "user" from creating or requesting admin or sub-admin account.
     if (accountRole === role.ADMIN || accountRole === role.SUB_ADMIN) {
-        return next(
-            new AppError(
-                "You can't create or request for admin or sub-admin role.",
-                401
-            )
-        );
+        return next(new AppError("You can't create or request for admin or sub-admin role.", 401));
     }
 
     // Set "approvedBy" field.
-    if (
-        loggedInAccountRole &&
-        (loggedInAccountRole === role.ADMIN ||
-            loggedInAccountRole === role.SUB_ADMIN)
-    ) {
+    if (loggedInAccountRole && (loggedInAccountRole === role.ADMIN || loggedInAccountRole === role.SUB_ADMIN)) {
         approvedBy = req.account?.accountNumber;
     }
 
@@ -176,27 +165,18 @@ exports.loginWithEmailOrAccountNumber = catchAsync(async (req, res, next) => {
     let token, account;
 
     if ((accountNumber || email) && password) {
-        const { account: userAccount, error } =
-            await this.fetchAccountFromCredentials({
-                accountNumber,
-                email,
-                password,
-            });
+        const { account: userAccount, error } = await this.fetchAccountFromCredentials({
+            accountNumber,
+            email,
+            password,
+        });
 
         if (error) {
             return next(error);
         }
 
-        if (
-            userAccount?.accountRole !== role.ADMIN &&
-            !userAccount?.approvedBy
-        ) {
-            return next(
-                new AppError(
-                    "Your account isn't approved. Wait for admin or sub-amdin to process your account request.",
-                    401
-                )
-            );
+        if (userAccount?.accountRole !== role.ADMIN && !userAccount?.approvedBy) {
+            return next(new AppError("Your account isn't approved. Wait for admin or sub-amdin to process your account request.", 401));
         }
 
         account = userAccount;
@@ -204,19 +184,15 @@ exports.loginWithEmailOrAccountNumber = catchAsync(async (req, res, next) => {
         // Prevents from sending password field in response
         account.password = undefined;
 
-        token = createAndSendToken(
-            { accountNumber: account.accountNumber, email: account.email },
-            res
-        );
+        token = createAndSendToken({ accountNumber: account.accountNumber, email: account.email }, res);
     } else if (req.cookies.token) {
-        const tokenData = await promisify(jwt.verify)(
-            req.cookies.token,
-            process.env.JWT_TOKEN_SECRET
-        );
+        const tokenData = await promisify(jwt.verify)(req.cookies.token, process.env.JWT_TOKEN_SECRET);
 
         account = await Account.findOne({
             accountNumber: tokenData.accountNumber,
         });
+
+        account = await accountController.populateLinkedAccounts(account, { accountNumber: 1, profilePicture: 1 });
 
         token = req.cookies.token;
         sendCookie(cookie.KEY, token, { httpOnly: true }, res);
@@ -243,10 +219,7 @@ exports.logout = (req, res) => {
 
 exports.protect = catchAsync(async (req, res, next) => {
     let token;
-    if (
-        req.headers.authorization &&
-        req.headers.authorization.startsWith("Bearer")
-    ) {
+    if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
         token = req.headers.authorization.split(" ")[1];
     } else if (req.cookies.token) {
         token = req.cookies.token;
@@ -256,10 +229,7 @@ exports.protect = catchAsync(async (req, res, next) => {
         return next(new AppError("You are not logged in.", 401));
     }
 
-    const tokenData = await promisify(jwt.verify)(
-        token,
-        process.env.JWT_TOKEN_SECRET
-    );
+    const tokenData = await promisify(jwt.verify)(token, process.env.JWT_TOKEN_SECRET);
 
     const account = await Account.findOne({
         accountNumber: tokenData.accountNumber,
@@ -277,8 +247,7 @@ exports.restrictTo =
     (req, res, next) => {
         const userRole = req.account?.accountRole;
 
-        if (!roles.includes(userRole))
-            return next(new AppError("You don't have permission.", 403));
+        if (!roles.includes(userRole)) return next(new AppError("You don't have permission.", 403));
 
         next();
     };

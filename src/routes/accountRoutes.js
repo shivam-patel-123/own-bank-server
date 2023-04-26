@@ -11,18 +11,11 @@ router.route("/logout").get(authController.logout);
 
 router.use(authController.protect);
 
-router
-    .route("/approve")
-    .get(
-        authController.restrictTo(accountRoles.ADMIN, accountRoles.SUB_ADMIN),
-        accountController.getAccountsToApprove
-    )
-    .post(accountController.approveAccount);
+router.route("/switch").post(accountController.switchAccount);
 
-router
-    .route("/")
-    .get(accountController.getAllAccounts)
-    .post(authController.createNewAccount);
+router.route("/approve").get(authController.restrictTo(accountRoles.ADMIN, accountRoles.SUB_ADMIN), accountController.getAccountsToApprove).post(accountController.approveAccount);
+
+router.route("/").get(accountController.getAllAccounts).post(authController.createNewAccount);
 
 router.route("/:accountNumber").get(accountController.getByAccountNumber);
 
